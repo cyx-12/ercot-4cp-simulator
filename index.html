@@ -4,7 +4,25 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>ERCOT 4CP Cost-Shift Simulator | Data Center Regulatory Analysis</title>
-<meta name="description" content="Interactive transmission cost allocation analysis under Texas Senate Bill 6. Compare 4CP reform scenarios for data center electricity costs."/>
+<meta name="description" content="Interactive transmission cost allocation analysis under Texas Senate Bill 6. Compare 4CP reform scenarios for data center electricity costs. PUCT Project 58484."/>
+<meta name="keywords" content="ERCOT, 4CP, cost-shift, transmission cost allocation, Senate Bill 6, SB6, PUCT 58484, data center, electricity regulation, Texas, residential ratepayer, peak shaving, TCOS"/>
+<meta name="author" content="CY, University of Texas at Austin"/>
+<meta name="robots" content="index, follow"/>
+<link rel="canonical" href="https://website-nu-seven-31.vercel.app"/>
+
+<meta property="og:title" content="ERCOT 4CP Cost-Shift Simulator"/>
+<meta property="og:description" content="Interactive tool analyzing how Texas 4CP transmission cost allocation shifts billions from large loads to residential ratepayers. Compare reform scenarios under Senate Bill 6."/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="https://website-nu-seven-31.vercel.app"/>
+
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="ERCOT 4CP Cost-Shift Simulator"/>
+<meta name="twitter:description" content="Interactive transmission cost allocation analysis under Texas SB6. Compare 4CP reform scenarios for data center electricity costs."/>
+
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"ERCOT 4CP Cost-Shift Simulator","description":"Interactive transmission cost allocation analysis under Texas Senate Bill 6","url":"https://website-nu-seven-31.vercel.app","author":{"@type":"Person","name":"CY","affiliation":{"@type":"Organization","name":"University of Texas at Austin, LBJ School of Public Affairs"}},"about":{"@type":"Thing","name":"ERCOT 4CP Transmission Cost Allocation"},"keywords":"ERCOT, 4CP, cost-shift, Senate Bill 6, PUCT 58484, data center electricity"}
+</script>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
@@ -281,7 +299,14 @@ function App(){
           <h1 style={{fontSize:20,fontWeight:800,margin:0,background:"linear-gradient(135deg,#f6b93b,#ff6b6b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>ERCOT 4CP Cost-Shift Simulator</h1>
           <div style={{fontSize:11,color:"#576574",marginTop:2}}>Transmission Cost Allocation Analysis Under Senate Bill 6</div>
         </div>
-        <div style={{textAlign:"right",fontSize:10,color:"#576574"}}><div>Data: NRG Energy · TPPF · ERCOT</div><div>PUCT Deadline: Dec 31, 2026</div></div>
+        <div style={{textAlign:"right",fontSize:10}}>
+          <div style={{marginBottom:4}}><span style={{color:"#c8d6e5",fontWeight:600}}>CY</span><span style={{color:"#576574"}}> · UT Austin LBJ School</span></div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
+            <a href="mailto:cz@utexas.edu" style={{color:"#778ca3",textDecoration:"none",fontSize:10}}>cz@utexas.edu</a>
+            <a href="https://www.linkedin.com/in/dzcy" target="_blank" rel="noopener noreferrer" style={{color:"#0a66c2",textDecoration:"none",fontSize:10,fontWeight:600}}>LinkedIn</a>
+          </div>
+          <div style={{color:"#576574",marginTop:3}}>Data: NRG Energy · TPPF · ERCOT</div>
+        </div>
       </div>
       <div style={{display:"flex",gap:4,marginTop:12,flexWrap:"wrap"}}>
         {TABS.map(n=><button key={n.id} onClick={()=>setTab(n.id)} style={{padding:"6px 14px",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5,background:tab===n.id?"rgba(246,185,59,0.15)":"transparent",color:tab===n.id?"#f6b93b":"#576574"}}><span>{n.icon}</span>{n.label}</button>)}
