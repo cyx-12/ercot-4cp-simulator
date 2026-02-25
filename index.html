@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ERCOT 4CP Cost-Shift Simulator | Data Center Regulatory Analysis</title>
+<meta name="description" content="Interactive transmission cost allocation analysis under Texas Senate Bill 6. Compare 4CP reform scenarios for data center electricity costs."/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.10.3/Recharts.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a1a;color:#c8d6e5;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+input[type="range"]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:3px;background:rgba(255,255,255,0.08);outline:none;cursor:pointer}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#f6b93b;cursor:pointer;border:2px solid #0a0a1a}
+input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#f6b93b;cursor:pointer;border:2px solid #0a0a1a}
+table{width:100%;border-collapse:collapse}
+button{font-family:inherit}
+@media(max-width:900px){.grid-2{grid-template-columns:1fr!important}.grid-sim{grid-template-columns:1fr!important}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useMemo}=React;
+const {BarChart,Bar,XAxis,YAxis,CartesianGrid,Tooltip,Legend,ResponsiveContainer,LineChart,Line,AreaChart,Area}=Recharts;
+
+const RATE=66.76;
+const TCOS_SERIES=[{year:2002,tcos:0.8},{year:2003,tcos:0.9},{year:2004,tcos:1.0},{year:2005,tcos:1.0},{year:2006,tcos:1.1},{year:2007,tcos:1.2},{year:2008,tcos:1.5},{year:2009,tcos:1.6},{year:2010,tcos:1.5},{year:2011,tcos:1.6},{year:2012,tcos:1.7},{year:2013,tcos:2.3},{year:2014,tcos:3.0},{year:2015,tcos:3.5},{year:2016,tcos:3.5},{year:2017,tcos:3.5},{year:2018,tcos:3.5},{year:2019,tcos:3.5},{year:2020,tcos:3.6},{year:2021,tcos:3.7},{year:2022,tcos:4.0},{year:2023,tcos:4.5},{year:2024,tcos:5.0},{year:2025,tcos:5.5}];
+
+const TDSP={
+  Oncor:{res:{cur:45.88,sum:42.21},nonres:{cur:26.31,sum:22.64},fourcp:{cur:27.80,sum:35.15},impact:217},
+  CenterPoint:{res:{cur:47.61,sum:44.50},nonres:{cur:22.14,sum:19.15},fourcp:{cur:30.25,sum:36.35},impact:210},
+  AEP:{res:{cur:49.30,sum:43.95},nonres:{cur:29.18,sum:25.36},fourcp:{cur:21.52,sum:30.69},impact:178},
+  TNMP:{res:{cur:41.64,sum:34.93},nonres:{cur:25.18,sum:22.01},fourcp:{cur:33.17,sum:43.06},impact:268}
+};
+
+const REG_BILL=[{dsp:"TNMP",y2002:30,y2025:44},{dsp:"AEP TNC",y2002:28,y2025:37},{dsp:"AEP TCC",y2002:30,y2025:41},{dsp:"Oncor",y2002:28,y2025:39},{dsp:"CenterPoint",y2002:28,y2025:40},{dsp:"Wtd Avg",y2002:28,y2025:39}];
+
+const PROJ=[{year:2024,base:5.0,with765:5.0},{year:2026,base:5.5,with765:6.0},{year:2028,base:6.0,with765:8.0},{year:2030,base:6.5,with765:10.0},{year:2032,base:7.0,with765:11.0}];
+
+function calc(mw,eff){
+  const full=mw*1000*RATE;
+  return[
+    {name:"Status Quo 4CP",dc:full*(1-eff),shift:full*eff,intervals:"4×15min summer"},
+    {name:"12CP + 4hr",dc:full*(1-eff*.35),shift:full*eff*.35,intervals:"12 monthly, 4hr"},
+    {name:"365CP + 1hr",dc:full*(1-eff*.08),shift:full*eff*.08,intervals:"365 daily, 1hr"},
+    {name:"Hybrid CP+NCP",dc:full*(1-eff*.20),shift:full*eff*.20,intervals:"12CP + 12NCP"},
+    {name:"Participant Fund",dc:full,shift:0,intervals:"Direct assignment"}
+  ];
+}
+
+const fmt=v=>v>=1e6?`$${(v/1e6).toFixed(1)}M`:v>=1e3?`$${(v/1e3).toFixed(0)}K`:`$${v.toFixed(0)}`;
+
+function Stat({label,value,sub,color="#f6b93b",small}){
+  return <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:10,padding:small?"10px 12px":"14px 16px",flex:1,minWidth:small?110:130}}>
+    <div style={{fontSize:small?9:10,color:"#778ca3",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>{label}</div>
+    <div style={{fontSize:small?16:22,fontWeight:800,color,fontFamily:"monospace",lineHeight:1.1}}>{value}</div>
+    {sub&&<div style={{fontSize:9,color:"#576574",marginTop:2}}>{sub}</div>}
+  </div>;
+}
+
+function Slider({label,value,onChange,min,max,step,unit,desc}){
+  return <div style={{marginBottom:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
+      <label style={{fontSize:12,fontWeight:600,color:"#c8d6e5"}}>{label}</label>
+      <span style={{fontSize:16,fontWeight:700,color:"#f6b93b",fontFamily:"monospace"}}>{typeof value==="number"&&value>=1?value.toLocaleString():value}{unit}</span>
+    </div>
+    {desc&&<div style={{fontSize:10,color:"#778ca3",marginBottom:5}}>{desc}</div>}
+    <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(Number(e.target.value))} />
+    <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#576574",marginTop:1}}><span>{min}{unit}</span><span>{max}{unit}</span></div>
+  </div>;
+}
+
+const ttStyle={background:"#1a1a2e",border:"1px solid #333",borderRadius:8};
+
+function SimTab(){
+  const[mw,setMw]=useState(100);
+  const[eff,setEff]=useState(0.95);
+  const data=useMemo(()=>calc(mw,eff),[mw,eff]);
+  const full=mw*1000*RATE;
+  const chartData=data.map(d=>({name:d.name.split("+")[0].trim(),"DC Pays":Math.round(d.dc),"Shifted":Math.round(d.shift)}));
+  const resMonthly=(data[0].shift/7e6/12);
+
+  return <div>
+    <div className="grid-sim" style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:20,alignItems:"start"}}>
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#f6b93b",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Parameters</div>
+        <Slider label="Data Center Load" value={mw} onChange={setMw} min={10} max={1000} step={10} unit=" MW" desc="100MW typical, 500MW hyperscale"/>
+        <Slider label="Peak Shave Effectiveness" value={eff} onChange={setEff} min={0} max={1} step={0.05} unit="" desc="% load curtailed at 4CP. 0.95 = near-perfect"/>
+        <div style={{marginTop:12,padding:10,background:"rgba(246,185,59,0.08)",borderRadius:8,border:"1px solid rgba(246,185,59,0.15)"}}>
+          <div style={{fontSize:10,color:"#f6b93b",fontWeight:600,marginBottom:3}}>💡 Key Finding</div>
+          <div style={{fontSize:11,color:"#c8d6e5",lineHeight:1.5}}>Under 4CP, a {mw}MW data center avoids <span style={{color:"#ff6b6b",fontWeight:700}}>{fmt(data[0].shift)}/yr</span> — shifted to residential ratepayers.</div>
+        </div>
+      </div>
+      <div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+          <Stat label="Full Obligation" value={fmt(full)} sub={`${mw}MW × $${RATE}/kW-yr`} color="#dfe6e9"/>
+          <Stat label="4CP Cost Shifted" value={fmt(data[0].shift)} sub="To residential class" color="#ff6b6b"/>
+          <Stat label="365CP Shifted" value={fmt(data[2].shift)} sub="92% reduction" color="#00d2d3"/>
+          <Stat label="Res Monthly" value={`$${resMonthly.toFixed(2)}`} sub="Per household (4CP)" color="#feca57"/>
+        </div>
+        <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:10}}>Annual Cost Allocation by Scenario</div>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={chartData} layout="vertical" margin={{left:10,right:20}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
+              <XAxis type="number" tickFormatter={v=>v>=1e6?`$${(v/1e6).toFixed(0)}M`:`$${(v/1e3).toFixed(0)}K`} tick={{fill:"#778ca3",fontSize:10}}/>
+              <YAxis type="category" dataKey="name" width={110} tick={{fill:"#c8d6e5",fontSize:10}}/>
+              <Tooltip formatter={v=>fmt(v)} contentStyle={ttStyle} labelStyle={{color:"#f6b93b"}}/>
+              <Bar dataKey="DC Pays" stackId="a" fill="#00d2d3"/>
+              <Bar dataKey="Shifted" stackId="a" fill="#ff6b6b" radius={[0,4,4,0]}/>
+              <Legend wrapperStyle={{fontSize:10}}/>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{marginTop:12,overflowX:"auto"}}>
+          <table style={{fontSize:11}}>
+            <thead><tr style={{borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
+              {["Scenario","Intervals","DC Annual Cost","Cost Shifted","Avoidance"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left",color:"#778ca3",fontWeight:600,fontSize:9,textTransform:"uppercase"}}>{h}</th>)}
+            </tr></thead>
+            <tbody>{data.map((s,i)=><tr key={i} style={{borderBottom:"1px solid rgba(255,255,255,0.04)",background:i===0?"rgba(255,107,107,0.05)":i===2?"rgba(0,210,211,0.05)":"transparent"}}>
+              <td style={{padding:"6px 8px",color:"#c8d6e5",fontWeight:i<1||i===2?600:400}}>{s.name}</td>
+              <td style={{padding:"6px 8px",color:"#778ca3",fontFamily:"monospace",fontSize:10}}>{s.intervals}</td>
+              <td style={{padding:"6px 8px",color:"#00d2d3",fontFamily:"monospace",fontWeight:600}}>{fmt(s.dc)}</td>
+              <td style={{padding:"6px 8px",color:"#ff6b6b",fontFamily:"monospace",fontWeight:600}}>{fmt(s.shift)}</td>
+              <td style={{padding:"6px 8px",fontFamily:"monospace",color:s.shift/full>.5?"#ff6b6b":s.shift/full>.1?"#feca57":"#00d2d3"}}>{(s.shift/full*100).toFixed(1)}%</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+function TDSPTab(){
+  const[cls,setCls]=useState("res");
+  const labels={res:"Residential",nonres:"Non-Res (Non-4CP)",fourcp:"4CP-Billed Class"};
+  const chartData=Object.entries(TDSP).map(([n,d])=>({name:n,"Current":d[cls].cur,"Summer Peak":d[cls].sum,gap:+(d[cls].cur-d[cls].sum).toFixed(1)}));
+  const shiftData=Object.entries(TDSP).map(([n,d])=>({name:n,"Res Overcharge":+(d.res.cur-d.res.sum).toFixed(1),"4CP Undercharge":+(d.fourcp.sum-d.fourcp.cur).toFixed(1)}));
+
+  return <div>
+    <div style={{display:"flex",gap:6,marginBottom:16}}>
+      {Object.entries(labels).map(([k,v])=><button key={k} onClick={()=>setCls(k)} style={{padding:"7px 14px",borderRadius:7,border:"1px solid",cursor:"pointer",fontSize:11,fontWeight:600,background:cls===k?"rgba(246,185,59,0.15)":"transparent",borderColor:cls===k?"#f6b93b":"rgba(255,255,255,0.1)",color:cls===k?"#f6b93b":"#778ca3"}}>{v}</button>)}
+    </div>
+    <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:10}}>{labels[cls]} Allocation: Current vs. Summer Peak</div>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/><XAxis dataKey="name" tick={{fill:"#c8d6e5",fontSize:10}}/><YAxis tick={{fill:"#778ca3",fontSize:9}} unit="%" domain={[0,55]}/><Tooltip contentStyle={ttStyle}/><Bar dataKey="Current" fill="#ff6b6b" radius={[4,4,0,0]}/><Bar dataKey="Summer Peak" fill="#00d2d3" radius={[4,4,0,0]}/><Legend wrapperStyle={{fontSize:10}}/></BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:10}}>Cost-Shift Gap (percentage points)</div>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={shiftData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/><XAxis dataKey="name" tick={{fill:"#c8d6e5",fontSize:10}}/><YAxis tick={{fill:"#778ca3",fontSize:9}} unit="pp"/><Tooltip contentStyle={ttStyle} formatter={v=>`${v} pp`}/><Bar dataKey="Res Overcharge" fill="#ff6b6b" radius={[4,4,0,0]}/><Bar dataKey="4CP Undercharge" fill="#00d2d3" radius={[4,4,0,0]}/><Legend wrapperStyle={{fontSize:10}}/></BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+    <div style={{marginTop:16,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+      <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:8}}>CenterPoint Case Study: Widening Gap (2018 → 2023)</div>
+      <div style={{display:"flex",gap:24,justifyContent:"center",alignItems:"flex-end",padding:"8px 0"}}>
+        {[{yr:"2018",use:34,alloc:46.6,gap:"12.6pp"},{yr:"2023",use:33,alloc:49,gap:"16.0pp ↑"}].map(d=>
+          <div key={d.yr} style={{textAlign:"center"}}>
+            <div style={{fontSize:10,color:"#778ca3",marginBottom:6}}>{d.yr}</div>
+            <div style={{display:"flex",gap:6,alignItems:"flex-end",justifyContent:"center",height:90}}>
+              <div style={{width:36,height:d.use*1.4,background:"#00d2d3",borderRadius:"3px 3px 0 0",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:8,color:"#fff",fontWeight:700}}>{d.use}%</span></div>
+              <div style={{width:36,height:d.alloc*1.4,background:"#ff6b6b",borderRadius:"3px 3px 0 0",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:8,color:"#fff",fontWeight:700}}>{d.alloc}%</span></div>
+            </div>
+            <div style={{fontSize:10,color:d.yr==="2023"?"#ff6b6b":"#576574",fontWeight:d.yr==="2023"?600:400,marginTop:3}}>{d.gap}</div>
+          </div>
+        )}
+      </div>
+      <div style={{display:"flex",gap:12,justifyContent:"center",marginTop:6,fontSize:10}}>
+        <span style={{color:"#00d2d3"}}>■ Energy Usage</span><span style={{color:"#ff6b6b"}}>■ TCOS Allocation</span>
+      </div>
+      <div style={{fontSize:10,color:"#778ca3",textAlign:"center",marginTop:6}}>Source: PUCT Docket Nos. 56211 & 49421</div>
+    </div>
+  </div>;
+}
+
+function TCOSTab(){
+  return <div>
+    <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:3}}>ERCOT Annual TCOS (2002–2025)</div>
+        <div style={{fontSize:9,color:"#778ca3",marginBottom:10}}>Sources: PUCT Annual Filings · NRG & TPPF analyses</div>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={TCOS_SERIES}><defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f6b93b" stopOpacity={0.3}/><stop offset="95%" stopColor="#f6b93b" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/><XAxis dataKey="year" tick={{fill:"#778ca3",fontSize:9}}/><YAxis tick={{fill:"#778ca3",fontSize:9}} unit="$B"/><Tooltip contentStyle={ttStyle} formatter={v=>`$${v}B`}/><Area type="monotone" dataKey="tcos" stroke="#f6b93b" strokeWidth={2} fill="url(#tg)" name="TCOS"/></AreaChart>
+        </ResponsiveContainer>
+        <div style={{display:"flex",gap:10,justifyContent:"center",marginTop:6,fontSize:9}}>
+          <span style={{color:"#f6b93b"}}>● 2008: CREZ Approved</span><span style={{color:"#00d2d3"}}>● 2015: CREZ Complete</span><span style={{color:"#ff6b6b"}}>● 2025: SB6 + 765kV</span>
+        </div>
+      </div>
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:3}}>TCOS Projection: With vs. Without 765-kV</div>
+        <div style={{fontSize:9,color:"#778ca3",marginBottom:10}}>NRG/TPPF estimates: 7% WACC, 30-yr depreciation</div>
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={PROJ}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/><XAxis dataKey="year" tick={{fill:"#778ca3",fontSize:10}}/><YAxis tick={{fill:"#778ca3",fontSize:9}} unit="$B" domain={[4,12]}/><Tooltip contentStyle={ttStyle} formatter={v=>`$${v}B`}/><Line type="monotone" dataKey="base" stroke="#00d2d3" strokeWidth={2} name="Baseline" dot={{fill:"#00d2d3"}}/><Line type="monotone" dataKey="with765" stroke="#ff6b6b" strokeWidth={2} strokeDasharray="8 4" name="With 765-kV" dot={{fill:"#ff6b6b"}}/><Legend wrapperStyle={{fontSize:10}}/></LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+    <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginTop:16}}>
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:10}}>Regulated Share of Residential Bill</div>
+        <ResponsiveContainer width="100%" height={230}>
+          <BarChart data={REG_BILL}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/><XAxis dataKey="dsp" tick={{fill:"#c8d6e5",fontSize:9}}/><YAxis tick={{fill:"#778ca3",fontSize:9}} unit="%" domain={[0,50]}/><Tooltip contentStyle={ttStyle} formatter={v=>`${v}%`}/><Bar dataKey="y2002" fill="#00d2d3" name="2002" radius={[3,3,0,0]}/><Bar dataKey="y2025" fill="#ff6b6b" name="2025" radius={[3,3,0,0]}/><Legend wrapperStyle={{fontSize:10}}/></BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:10}}>Key Metrics</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <Stat small label="Current TCOS" value="$5.0B" sub="2024 annual" color="#f6b93b"/>
+          <Stat small label="TX Rate" value="$66.76" sub="per kW-year" color="#00d2d3"/>
+          <Stat small label="CREZ Annual" value="$650M" sub="$6.9B capital" color="#feca57"/>
+          <Stat small label="765-kV West" value="$14B" sub="Approved" color="#ff6b6b"/>
+          <Stat small label="765-kV East" value="$18B" sub="Proposed" color="#ff6b6b"/>
+          <Stat small label="Since 2010" value="+57%" sub="Inflation-adj" color="#ff6b6b"/>
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+function ImpactTab(){
+  const impData=Object.entries(TDSP).map(([n,d])=>({name:n,annual:d.impact}));
+  return <div>
+    <div style={{background:"rgba(255,107,107,0.06)",border:"1px solid rgba(255,107,107,0.15)",borderRadius:12,padding:16,marginBottom:16}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#ff6b6b",marginBottom:6}}>What 765-kV STEP Means for Texas Families</div>
+      <div style={{fontSize:12,color:"#c8d6e5",lineHeight:1.6}}>If $33B expansion proceeds under unchanged 4CP, average residential customers face <strong style={{color:"#ff6b6b"}}>$178–$268/year</strong> in additional transmission costs. Large loads can avoid payments through 4CP curtailment; households cannot.</div>
+    </div>
+    <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:10}}>Annual Residential Impact by DSP</div>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={impData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/><XAxis dataKey="name" tick={{fill:"#c8d6e5",fontSize:11}}/><YAxis tick={{fill:"#778ca3",fontSize:9}} unit="$"/><Tooltip contentStyle={ttStyle} formatter={v=>`$${v}/yr`}/><Bar dataKey="annual" fill="#ff6b6b" radius={[6,6,0,0]} name="Annual $/household"/></BarChart>
+        </ResponsiveContainer>
+        <div style={{fontSize:9,color:"#778ca3",textAlign:"center",marginTop:4}}>$32.99B investment · 7% WACC · 48% residential allocation</div>
+      </div>
+      <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#c8d6e5",marginBottom:10}}>The 4CP Vicious Cycle</div>
+        {[
+          {s:"1",t:"Large loads locate in Texas",c:"#778ca3"},
+          {s:"2",t:"Transmission built to serve them → TCOS rises",c:"#feca57"},
+          {s:"3",t:"Large loads curtail at 4×15-min peaks → $0 TCOS",c:"#ff6b6b"},
+          {s:"4",t:"Cost shifted to residential (no avoidance mechanism)",c:"#ff6b6b"},
+          {s:"5",t:"Higher TCOS → stronger incentive → more participants",c:"#ff6b6b"},
+          {s:"6",t:"418 (2022) → 1,080 (2024) → cycle accelerates",c:"#f6b93b"}
+        ].map(({s,t,c})=><div key={s} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
+          <div style={{width:22,height:22,borderRadius:"50%",background:c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#1a1a2e",flexShrink:0}}>{s}</div>
+          <div style={{fontSize:11,color:"#c8d6e5",lineHeight:1.4,paddingTop:2}}>{t}</div>
+        </div>)}
+      </div>
+    </div>
+    <div style={{marginTop:16,background:"rgba(0,210,211,0.06)",border:"1px solid rgba(0,210,211,0.15)",borderRadius:12,padding:16}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#00d2d3",marginBottom:8}}>SB6 Reform Pathways</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
+        {[{n:"365CP + 1-hr",r:"~92% reduction",s:"NRG preferred"},{n:"12CP + 4-hr",r:"~65% reduction",s:"NRG preferred"},{n:"Hybrid CP+NCP",r:"~80% reduction",s:"NRG/TPPF"}].map(x=>
+          <div key={x.n} style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:12,border:"1px solid rgba(255,255,255,0.06)"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#00d2d3",marginBottom:4}}>{x.n}</div>
+            <div style={{fontSize:10,color:"#c8d6e5"}}>Cost-shift reduction: <strong>{x.r}</strong></div>
+            <div style={{fontSize:9,color:"#778ca3",marginTop:2}}>{x.s}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>;
+}
+
+const TABS=[{id:"sim",label:"Cost-Shift Simulator",icon:"⚡"},{id:"tdsp",label:"TDSP Dashboard",icon:"📊"},{id:"tcos",label:"TCOS Trends",icon:"📈"},{id:"impact",label:"Residential Impact",icon:"🏠"}];
+
+function App(){
+  const[tab,setTab]=useState("sim");
+  return <div style={{minHeight:"100vh",background:"linear-gradient(145deg,#0a0a1a 0%,#111128 40%,#0d1b2a 100%)"}}>
+    <div style={{padding:"16px 24px",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div>
+          <div style={{fontSize:10,fontWeight:600,color:"#f6b93b",textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:3}}>PUCT Project No. 58484</div>
+          <h1 style={{fontSize:20,fontWeight:800,margin:0,background:"linear-gradient(135deg,#f6b93b,#ff6b6b)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>ERCOT 4CP Cost-Shift Simulator</h1>
+          <div style={{fontSize:11,color:"#576574",marginTop:2}}>Transmission Cost Allocation Analysis Under Senate Bill 6</div>
+        </div>
+        <div style={{textAlign:"right",fontSize:10,color:"#576574"}}><div>Data: NRG Energy · TPPF · ERCOT</div><div>PUCT Deadline: Dec 31, 2026</div></div>
+      </div>
+      <div style={{display:"flex",gap:4,marginTop:12,flexWrap:"wrap"}}>
+        {TABS.map(n=><button key={n.id} onClick={()=>setTab(n.id)} style={{padding:"6px 14px",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5,background:tab===n.id?"rgba(246,185,59,0.15)":"transparent",color:tab===n.id?"#f6b93b":"#576574"}}><span>{n.icon}</span>{n.label}</button>)}
+      </div>
+    </div>
+    <div style={{padding:"16px 24px"}}>
+      {tab==="sim"&&<SimTab/>}{tab==="tdsp"&&<TDSPTab/>}{tab==="tcos"&&<TCOSTab/>}{tab==="impact"&&<ImpactTab/>}
+    </div>
+    <div style={{padding:"12px 24px",borderTop:"1px solid rgba(255,255,255,0.04)",textAlign:"center"}}>
+      <div style={{fontSize:9,color:"#576574"}}>University of Texas at Austin · LBJ School of Public Affairs · Data from PUCT Project No. 58484 filings</div>
+    </div>
+  </div>;
+}
+
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
